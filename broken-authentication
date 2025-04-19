@@ -1,0 +1,65 @@
+<?php
+session_start();
+// Mock user database
+$users = ['alice' => 'password123', 'bob' => 'letmein', 'charlie' => 'charlie123' ];
+// In-memory logs (would normally be in a database or file)
+$failedAttempts = $_SESSION['failed_attempts'] ?? [];
+$lockedAccounts = $_SESSION['locked_accounts'] ?? [];
+// Configurable brute-force thresholds
+$maxAttempts = 3;
+$lockDuration = 300; // seconds
+function getClientIP() {
+    return $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'];
+}
+// Handle POST login
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $username = $_POST['username'] ?? '';
+    $password = $_POST['password'] ?? '';
+    $clientIP = getClientIP();
+
+    // Check if account is locked
+    if (isset($lockedAccounts[$username])) {
+        $lockTime = $lockedAccounts[$username];
+        if (time() - $lockTime < $lockDuration) {
+            die("Account is locked.");
+        } else {
+            unset($lockedAccounts[$username]);
+        }
+    }
+    // Simulate response timing difference
+    if (array_key_exists($username, $users)) {
+        sleep(1); // delay for valid usernames
+    }
+
+    // Check credentials
+    if (isset($users[$username]) && $users[$username] === $password) {
+        echo "Login successful!";
+        $_SESSION['failed_attempts'] = []; // Reset on success
+        exit;
+    } else {
+        // Track failed attempts per username
+        if (!isset($failedAttempts[$username])) {
+            $failedAttempts[$username] = 0;
+        }
+        $failedAttempts[$username]++;
+
+        // Lock account if too many failures
+        if ($failedAttempts[$username] >= $maxAttempts) {
+            $lockedAccounts[$username] = time();
+            echo "Account is locked.";
+        } else {
+            echo "Invalid credentials.";
+        }
+    }
+
+    $_SESSION['failed_attempts'] = $failedAttempts;
+    $_SESSION['locked_accounts'] = $lockedAccounts;
+}
+?>
+
+<!-- HTML Form -->
+<form method="post">
+    <input type="text" name="username" placeholder="Username" /><br>
+    <input type="password" name="password" placeholder="Password" /><br>
+    <button type="submit">Login</button>
+</form>
